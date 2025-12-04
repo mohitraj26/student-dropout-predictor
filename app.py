@@ -5,18 +5,15 @@ import pickle
 import sqlite3
 import hashlib
 
-# --- CONFIGURATION ---
+# --- CONFIG ---
 st.set_page_config(page_title="Student Success AI", layout="wide")
 
-# --- 1. DATA & MODEL LOADING ---
+# ------------------ DATA & MODEL ------------------
 @st.cache_data
 def load_data():
-    # Load the processed data (Cleaned version from Step 1)
-    # This file should contain String labels (e.g., "Yes", "No", "Arts") for the dashboard to look good.
     try:
         df = pd.read_csv('processed_student_data.csv')
     except FileNotFoundError:
-        # Fallback if processed data isn't found, try original
         df = pd.read_csv('fully_transformed_student_dataset.csv')
     return df
 
@@ -32,7 +29,7 @@ def load_model():
 df = load_data()
 model = load_model()
 
-# --- 2. AUTHENTICATION UTILS ---
+# ------------------ AUTH SYSTEM ------------------
 def make_hashes(password):
     return hashlib.sha256(str.encode(password)).hexdigest()
 
@@ -65,23 +62,19 @@ def login_user(username, password):
 
 create_user_table()
 
-# --- 3. SESSION STATE ---
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
-# --- 4. NAVIGATION ---
-# We use a sidebar for navigation to keep the main area clean
+# ------------------ NAVIGATION ------------------
 st.sidebar.title("Navigation")
-menu = ["Home/Login", "Dashboard (Step 3)", "Prediction Tool (Step 6)"]
+menu = ["Home/Login", "Dashboard", "Prediction Tool"]
 choice = st.sidebar.selectbox("Go to:", menu)
 
-# =============================================================================
-# VIEW 1: LOGIN / HOME
-# =============================================================================
+# ------------------ LOGIN PAGE ------------------
 if choice == "Home/Login":
     st.title("🎓 Student Dropout Prediction System")
-    st.markdown("Welcome! Please login to access the Dashboard and Prediction tools.")
-    
+    st.markdown("Welcome! Please login to continue.")
+
     if not st.session_state['logged_in']:
         tab1, tab2 = st.tabs(["Login", "Sign Up"])
         
@@ -107,142 +100,114 @@ if choice == "Home/Login":
                     st.warning("User already exists.")
     else:
         st.success(f"Logged in as: **{st.session_state['username']}**")
-        st.info("Use the sidebar to navigate to the **Dashboard** or **Prediction Tool**.")
-        
         if st.button("Logout"):
             st.session_state['logged_in'] = False
             st.rerun()
 
-# =============================================================================
-# VIEW 2: DASHBOARD (Task 3 - Enhanced)
-# =============================================================================
-elif choice == "Dashboard (Step 3)":
+# ------------------ DASHBOARD ------------------
+elif choice == "Dashboard":
     if not st.session_state['logged_in']:
-        st.warning("🔒 Please Login to access the Dashboard.")
+        st.warning("Please login to access the Dashboard.")
     else:
         st.title("📊 Interactive Analysis Dashboard")
-        st.markdown("### Insights into student performance and dropout risks.")
-        
-        # --- Sidebar Filters (Specific to Dashboard) ---
-        st.sidebar.markdown("---")
+
+        # Filters
         st.sidebar.header("Dashboard Filters")
-        
-        # 1. Course Filter
+
         courses = df['Course Name'].unique()
         selected_courses = st.sidebar.multiselect("Select Course", courses, default=courses[:3])
-        
-        # 2. Nationality Filter
+
         nationalities = df['Nationality'].unique()
         selected_nationality = st.sidebar.multiselect("Select Nationality", nationalities, default=nationalities[:3])
-        
-        # 3. Qualification Filter
+
         qualifications = df['Previous Qualification'].unique()
         selected_qualification = st.sidebar.multiselect("Select Previous Qualification", qualifications, default=qualifications[:3])
-        
-        # Apply Filters
+
         df_viz = df[
             (df['Course Name'].isin(selected_courses)) &
             (df['Nationality'].isin(selected_nationality)) &
             (df['Previous Qualification'].isin(selected_qualification))
         ].copy()
-        
+
         if df_viz.empty:
-            st.warning("No data matches your filters. Please adjust your selection.")
+            st.warning("No data matches your filters.")
         else:
-            # --- KPI Metrics ---
+            # KPI
             col1, col2, col3 = st.columns(3)
             total_students = len(df_viz)
             dropout_rate = (df_viz['Student Status'] == 'Dropout').mean() * 100
             avg_grade = df_viz['Average Grade (2nd Sem)'].mean()
 
-            col1.metric("Total Students (Filtered)", total_students)
+            col1.metric("Total Students", total_students)
             col2.metric("Dropout Rate", f"{dropout_rate:.1f}%")
-            col3.metric("Avg Grade (2nd Sem)", f"{avg_grade:.1f}")
+            col3.metric("Avg 2nd Sem Grade", f"{avg_grade:.1f}")
 
             st.markdown("---")
 
-            # --- 1. Heatmap ---
-            st.subheader("1. Correlation Heatmap")
-            
-            # Prepare data for heatmap (Convert Text to Numbers)
+            # Heatmap
+            st.subheader("Correlation Heatmap")
             heatmap_df = df_viz.copy()
-            
-            # Encode Target
             heatmap_df['Is_Dropout'] = heatmap_df['Student Status'].apply(lambda x: 1 if x == 'Dropout' else 0)
-            
-            # Convert Yes/No to 1/0
+
             binary_map = {'Yes': 1, 'No': 0, 'Male': 1, 'Female': 0}
             for col in ['Tuition Fees Up-to-Date', 'Scholarship Holder', 'Is Debtor', 'Gender (1=Male, 0=Female)']:
                 if col in heatmap_df.columns and heatmap_df[col].dtype == 'object':
                     heatmap_df[col] = heatmap_df[col].map(binary_map)
 
-            # Select numeric columns for correlation
             corr_cols = [
-                'Is_Dropout', 'Age at Enrollment', 'Average Grade (2nd Sem)', 
+                'Is_Dropout', 'Age at Enrollment', 'Average Grade (2nd Sem)',
                 'Unemployment Rate (%)', 'Tuition Fees Up-to-Date', 'Scholarship Holder'
             ]
-            # Verify columns exist
             valid_cols = [c for c in corr_cols if c in heatmap_df.columns]
-            
+
             if valid_cols:
                 corr = heatmap_df[valid_cols].corr()
-                fig_corr = px.imshow(
-                    corr, text_auto=True, aspect="auto",
-                    color_continuous_scale='RdBu_r',
-                    title="Feature Correlation Matrix"
-                )
+                fig_corr = px.imshow(corr, text_auto=True, aspect="auto",
+                                     color_continuous_scale='RdBu_r')
                 st.plotly_chart(fig_corr, use_container_width=True)
 
-            # --- 2. Comparative Charts ---
-            st.subheader("2. Parental Qualification Impact")
-            
+            # Parental Qualification
+            st.subheader("Parental Qualification Impact")
             c1, c2 = st.columns(2)
-            
-            # Helper to get dropout rates
-            def get_dropout_rates(col_name):
-                return df_viz.groupby(col_name)['Student Status'].apply(lambda x: (x == 'Dropout').mean()).sort_values(ascending=False).head(10)
+
+            def dropout_by(col):
+                return df_viz.groupby(col)['Student Status'].apply(lambda x: (x == 'Dropout').mean()).sort_values(ascending=False).head(10)
 
             with c1:
-                dad_data = get_dropout_rates("Father's Qualification").reset_index(name='Dropout Rate')
-                fig_dad = px.bar(dad_data, x="Father's Qualification", y="Dropout Rate", 
-                                 title="Top 10 High-Risk Father's Qualifications", color_discrete_sequence=['#636EFA'])
+                dad_data = dropout_by("Father's Qualification").reset_index(name='Dropout Rate')
+                fig_dad = px.bar(dad_data, x="Father's Qualification", y="Dropout Rate")
                 st.plotly_chart(fig_dad, use_container_width=True)
                 
             with c2:
-                mom_data = get_dropout_rates("Mother's Qualification").reset_index(name='Dropout Rate')
-                fig_mom = px.bar(mom_data, x="Mother's Qualification", y="Dropout Rate", 
-                                 title="Top 10 High-Risk Mother's Qualifications", color_discrete_sequence=['#EF553B'])
+                mom_data = dropout_by("Mother's Qualification").reset_index(name='Dropout Rate')
+                fig_mom = px.bar(mom_data, x="Mother's Qualification", y="Dropout Rate")
                 st.plotly_chart(fig_mom, use_container_width=True)
 
-            # --- 3. Trends ---
-            st.subheader("3. Trend Analysis")
+            # Trends
+            st.subheader("Trend Analysis")
             tab_age, tab_eco = st.tabs(["Age Trend", "Economic Trend"])
             
             with tab_age:
                 age_trend = df_viz.groupby('Age at Enrollment')['Student Status'].apply(lambda x: (x == 'Dropout').mean()).reset_index(name='Dropout Rate')
-                fig_age = px.line(age_trend, x='Age at Enrollment', y='Dropout Rate', markers=True, title="Dropout Risk by Age")
+                fig_age = px.line(age_trend, x='Age at Enrollment', y='Dropout Rate', markers=True)
                 st.plotly_chart(fig_age, use_container_width=True)
                 
             with tab_eco:
                 eco_trend = df_viz.groupby('Unemployment Rate (%)')['Student Status'].apply(lambda x: (x == 'Dropout').mean()).reset_index(name='Dropout Rate')
-                # Try-except for OLS trendline in case statsmodels is missing
                 try:
-                    fig_eco = px.scatter(eco_trend, x='Unemployment Rate (%)', y='Dropout Rate', trendline="ols", title="Dropout Risk vs Unemployment")
+                    fig_eco = px.scatter(eco_trend, x='Unemployment Rate (%)', y='Dropout Rate', trendline="ols")
                 except:
-                    fig_eco = px.scatter(eco_trend, x='Unemployment Rate (%)', y='Dropout Rate', title="Dropout Risk vs Unemployment (Trendline unavailable)")
+                    fig_eco = px.scatter(eco_trend, x='Unemployment Rate (%)', y='Dropout Rate')
                 st.plotly_chart(fig_eco, use_container_width=True)
 
-# =============================================================================
-# VIEW 3: PREDICTION TOOL (Task 6)
-# =============================================================================
-elif choice == "Prediction Tool (Step 6)":
+# ------------------ PREDICTION TOOL ------------------
+elif choice == "Prediction Tool":
     if not st.session_state['logged_in']:
-        st.warning("🔒 Please Login to use the Prediction Tool.")
+        st.warning("Please login to use the Prediction Tool.")
     elif model is None:
-        st.error("⚠️ Model file (`student_dropout_model.pkl`) not found. Please run the analysis notebook first.")
+        st.error("Model file not found.")
     else:
         st.title("🤖 Real-Time Dropout Predictor")
-        st.markdown("Enter student details below to predict their likelihood of dropping out.")
         
         with st.form("prediction_form"):
             col1, col2, col3 = st.columns(3)
@@ -263,7 +228,6 @@ elif choice == "Prediction Tool (Step 6)":
             submit_button = st.form_submit_button("Predict Outcome")
             
         if submit_button:
-            # Prepare Input Data (Must match model training features)
             input_df = pd.DataFrame([[
                 1 if tuition == 'Yes' else 0,
                 1 if debtor == 'Yes' else 0,
@@ -281,15 +245,12 @@ elif choice == "Prediction Tool (Step 6)":
                 probability = model.predict_proba(input_df).max()
                 
                 st.markdown("---")
-                # 1 = Dropout, 0 = Graduate/Enrolled (based on common encoding)
                 if prediction == 1:
-                    st.error(f"⚠️ **Prediction: Dropout Risk**")
+                    st.error("⚠️ Prediction: Dropout Risk")
                     st.metric("Confidence Level", f"{probability:.1%}")
-                    st.markdown("👉 **Recommendation:** Student shows high risk factors (Debt/Grades). Immediate academic counseling is advised.")
                 else:
-                    st.success(f"✅ **Prediction: Likely to Graduate**")
+                    st.success("✅ Prediction: Likely to Graduate")
                     st.metric("Confidence Level", f"{probability:.1%}")
-                    st.markdown("👉 **Recommendation:** Student is on track. Continue standard monitoring.")
                     
             except Exception as e:
                 st.error(f"Prediction Error: {e}")
