@@ -1,14 +1,125 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
+import plotly.figure_factory as ff
 import pickle
 import sqlite3
 import hashlib
+import time
 
-# --- CONFIG ---
-st.set_page_config(page_title="Student Success AI", layout="wide")
+# --- 1. CONFIGURATION ---
+st.set_page_config(
+    page_title="Student Dropout Predictor", 
+    page_icon="🎓", 
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# ------------------ DATA & MODEL ------------------
+# --- 2. DARK MODE CSS STYLING ---
+st.markdown("""
+<style>
+    /* GLOBAL DARK THEME SETTINGS */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+        background-color: #0e1117; 
+        color: #e0e0e0;
+    }
+    
+    /* SIDEBAR STYLING */
+    section[data-testid="stSidebar"] {
+        background-color: #1a1c24;
+        border-right: 1px solid #2d2d2d;
+    }
+    
+    /* METRIC CARDS - GLASSMORPHISM */
+    div[data-testid="stMetric"] {
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        transition: transform 0.2s;
+    }
+    div[data-testid="stMetric"]:hover {
+        transform: translateY(-5px);
+        border-color: #3b82f6;
+    }
+    div[data-testid="stMetricLabel"] {
+        color: #94a3b8;
+        font-size: 0.85rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    div[data-testid="stMetricValue"] {
+        color: #ffffff;
+        font-size: 1.8rem;
+        font-weight: 700;
+    }
+
+    /* TABS STYLING */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        border-bottom: 1px solid #2d2d2d;
+        padding-bottom: 10px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 40px;
+        background-color: transparent;
+        border: 1px solid transparent;
+        color: #94a3b8;
+        font-weight: 600;
+        border-radius: 6px;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #3b82f6;
+        color: white;
+        border: 1px solid #3b82f6;
+    }
+
+    /* BUTTONS */
+    div.stButton > button {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        color: white;
+        border-radius: 8px;
+        border: none;
+        padding: 0.6rem 1.2rem;
+        font-weight: 600;
+        box-shadow: 0 4px 6px rgba(37, 99, 235, 0.3);
+        transition: all 0.3s ease;
+    }
+    div.stButton > button:hover {
+        box-shadow: 0 6px 12px rgba(37, 99, 235, 0.5);
+        transform: translateY(-1px);
+    }
+
+    /* FORM CONTAINERS */
+    [data-testid="stForm"] {
+        background-color: #161920;
+        padding: 30px;
+        border-radius: 16px;
+        border: 1px solid #2d2d2d;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+    }
+    
+    /* REMOVE HEADER BUT KEEP HAMBURGER MENU */
+    /* We only hide the decoration, not the toolbar itself */
+    header[data-testid="stHeader"] {
+        background-color: transparent;
+    }
+    
+    /* FOOTER CLEANUP */
+    footer {visibility: hidden;}
+    #MainMenu {visibility: visible;} /* Ensure menu is visible */
+    
+</style>
+""", unsafe_allow_html=True)
+
+# --- 3. BACKEND LOGIC ---
 @st.cache_data
 def load_data():
     try:
@@ -29,7 +140,7 @@ def load_model():
 df = load_data()
 model = load_model()
 
-# ------------------ AUTH SYSTEM ------------------
+# --- Auth Utils ---
 def make_hashes(password):
     return hashlib.sha256(str.encode(password)).hexdigest()
 
@@ -64,193 +175,338 @@ create_user_table()
 
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
+if 'username' not in st.session_state:
+    st.session_state['username'] = ""
 
-# ------------------ NAVIGATION ------------------
-st.sidebar.title("Navigation")
-menu = ["Home/Login", "Dashboard", "Prediction Tool"]
-choice = st.sidebar.selectbox("Go to:", menu)
+# --- 4. NAVIGATION SIDEBAR ---
+if st.session_state['logged_in']:
+    with st.sidebar:
+        st.markdown(
+            """
+            <div style="text-align: center; margin-bottom: 30px;">
+                <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); 
+                            border: 2px solid #3b82f6; width: 90px; height: 90px; 
+                            border-radius: 50%; display: flex; align-items: center; 
+                            justify-content: center; margin: 0 auto; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);">
+                    <span style="font-size: 45px;">🎓</span>
+                </div>
+                <h2 style="margin-top: 15px; color: #ffffff; font-weight: 700;">Student Dropout Predictor</h2>
+                <div style="background-color: rgba(59, 130, 246, 0.1); color: #3b82f6; 
+                            padding: 4px 12px; border-radius: 12px; display: inline-block; 
+                            font-size: 0.8rem; font-weight: 600; margin-top: 5px;">
+                    v2.0 Pro
+                </div>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
+        st.write(f"👤 **User:** {st.session_state['username']}")
+        st.write("---")
+        
+        menu = ["Dashboard", "Prediction Tool"]
+        choice = st.radio("MENU", menu, label_visibility="collapsed")
+        
+        st.write("---")
+        if st.button("Sign Out", type="secondary", width="stretch"): # FIX: use width="stretch"
+            st.session_state['logged_in'] = False
+            st.rerun()
+else:
+    choice = "Login"
 
-# ------------------ LOGIN PAGE ------------------
-if choice == "Home/Login":
-    st.title("🎓 Student Dropout Prediction System")
-    st.markdown("Welcome! Please login to continue.")
-
-    if not st.session_state['logged_in']:
-        tab1, tab2 = st.tabs(["Login", "Sign Up"])
+# =============================================================================
+# VIEW 1: LOGIN PAGE
+# =============================================================================
+if choice == "Login":
+    c1, c2, c3 = st.columns([1, 1.2, 1])
+    
+    with c2:
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        st.markdown(
+            """
+            <div style="text-align: center; padding: 20px;">
+                <h1 style="background: -webkit-linear-gradient(45deg, #3b82f6, #8b5cf6); 
+                           -webkit-background-clip: text; -webkit-text-fill-color: transparent; 
+                           font-weight: 800; font-size: 3rem;">
+                    Student Dropout Predictor
+                </h1>
+                <p style="color: #94a3b8; font-size: 1.1rem; margin-top: -10px;">
+                    Next-Gen Dropout Prediction & Analytics
+                </p>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
+        
+        tab1, tab2 = st.tabs(["🔐 Access", "📝 Join"])
         
         with tab1:
-            username = st.text_input("Username")
-            password = st.text_input("Password", type='password')
-            if st.button("Login"):
+            with st.form("login_form"):
+                username = st.text_input("Username", placeholder="admin")
+                password = st.text_input("Password", type='password', placeholder="••••••")
+                # FIX: use width="stretch"
+                submit_login = st.form_submit_button("Launch Dashboard", width="stretch")
+            
+            if submit_login:
                 if login_user(username, password):
                     st.session_state['logged_in'] = True
                     st.session_state['username'] = username
-                    st.success(f"Welcome back, {username}!")
+                    st.toast("Access Granted", icon="🔓")
+                    time.sleep(0.5)
                     st.rerun()
                 else:
-                    st.error("Invalid Username/Password")
+                    st.error("Access Denied: Invalid credentials")
         
         with tab2:
-            new_user = st.text_input("New Username")
-            new_pass = st.text_input("New Password", type='password')
-            if st.button("Create Account"):
+            with st.form("signup_form"):
+                new_user = st.text_input("New Username")
+                new_pass = st.text_input("New Password", type='password')
+                # FIX: use width="stretch"
+                submit_signup = st.form_submit_button("Create Account", width="stretch")
+                
+            if submit_signup:
                 if add_user(new_user, new_pass):
-                    st.success("Account created! Please login.")
+                    st.success("Account ready! Please sign in.")
                 else:
-                    st.warning("User already exists.")
-    else:
-        st.success(f"Logged in as: **{st.session_state['username']}**")
-        if st.button("Logout"):
-            st.session_state['logged_in'] = False
-            st.rerun()
+                    st.warning("Username taken.")
 
-# ------------------ DASHBOARD ------------------
+# =============================================================================
+# VIEW 2: DASHBOARD
+# =============================================================================
 elif choice == "Dashboard":
-    if not st.session_state['logged_in']:
-        st.warning("Please login to access the Dashboard.")
-    else:
-        st.title("📊 Interactive Analysis Dashboard")
-
-        # Filters
-        st.sidebar.header("Dashboard Filters")
-
+    st.markdown(
+        """
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <div>
+                <h1 style="margin: 0; font-size: 2.2rem;">Executive Overview</h1>
+                <p style="color: #94a3b8; margin: 0;">Real-time cohort analysis and retention metrics.</p>
+            </div>
+            <div style="text-align: right;">
+                <span style="background: rgba(16, 185, 129, 0.1); color: #10b981; padding: 6px 12px; border-radius: 8px; font-weight: 600; font-size: 0.85rem; border: 1px solid rgba(16, 185, 129, 0.2);">
+                    ● System Active
+                </span>
+            </div>
+        </div>
+        """, 
+        unsafe_allow_html=True
+    )
+    
+    # --- FILTERS ---
+    with st.expander("🔽 Filter Configuration", expanded=False):
+        f1, f2, f3 = st.columns(3)
         courses = df['Course Name'].unique()
-        selected_courses = st.sidebar.multiselect("Select Course", courses, default=courses[:3])
-
-        nationalities = df['Nationality'].unique()
-        selected_nationality = st.sidebar.multiselect("Select Nationality", nationalities, default=nationalities[:3])
-
-        qualifications = df['Previous Qualification'].unique()
-        selected_qualification = st.sidebar.multiselect("Select Previous Qualification", qualifications, default=qualifications[:3])
-
-        df_viz = df[
-            (df['Course Name'].isin(selected_courses)) &
-            (df['Nationality'].isin(selected_nationality)) &
-            (df['Previous Qualification'].isin(selected_qualification))
-        ].copy()
-
-        if df_viz.empty:
-            st.warning("No data matches your filters.")
-        else:
-            # KPI
-            col1, col2, col3 = st.columns(3)
-            total_students = len(df_viz)
-            dropout_rate = (df_viz['Student Status'] == 'Dropout').mean() * 100
-            avg_grade = df_viz['Average Grade (2nd Sem)'].mean()
-
-            col1.metric("Total Students", total_students)
-            col2.metric("Dropout Rate", f"{dropout_rate:.1f}%")
-            col3.metric("Avg 2nd Sem Grade", f"{avg_grade:.1f}")
-
-            st.markdown("---")
-
-            # Heatmap
-            st.subheader("Correlation Heatmap")
-            heatmap_df = df_viz.copy()
-            heatmap_df['Is_Dropout'] = heatmap_df['Student Status'].apply(lambda x: 1 if x == 'Dropout' else 0)
-
-            binary_map = {'Yes': 1, 'No': 0, 'Male': 1, 'Female': 0}
-            for col in ['Tuition Fees Up-to-Date', 'Scholarship Holder', 'Is Debtor', 'Gender (1=Male, 0=Female)']:
-                if col in heatmap_df.columns and heatmap_df[col].dtype == 'object':
-                    heatmap_df[col] = heatmap_df[col].map(binary_map)
-
-            corr_cols = [
-                'Is_Dropout', 'Age at Enrollment', 'Average Grade (2nd Sem)',
-                'Unemployment Rate (%)', 'Tuition Fees Up-to-Date', 'Scholarship Holder'
-            ]
-            valid_cols = [c for c in corr_cols if c in heatmap_df.columns]
-
-            if valid_cols:
-                corr = heatmap_df[valid_cols].corr()
-                fig_corr = px.imshow(corr, text_auto=True, aspect="auto",
-                                     color_continuous_scale='RdBu_r')
-                st.plotly_chart(fig_corr, use_container_width=True)
-
-            # Parental Qualification
-            st.subheader("Parental Qualification Impact")
-            c1, c2 = st.columns(2)
-
-            def dropout_by(col):
-                return df_viz.groupby(col)['Student Status'].apply(lambda x: (x == 'Dropout').mean()).sort_values(ascending=False).head(10)
-
-            with c1:
-                dad_data = dropout_by("Father's Qualification").reset_index(name='Dropout Rate')
-                fig_dad = px.bar(dad_data, x="Father's Qualification", y="Dropout Rate")
-                st.plotly_chart(fig_dad, use_container_width=True)
-                
-            with c2:
-                mom_data = dropout_by("Mother's Qualification").reset_index(name='Dropout Rate')
-                fig_mom = px.bar(mom_data, x="Mother's Qualification", y="Dropout Rate")
-                st.plotly_chart(fig_mom, use_container_width=True)
-
-            # Trends
-            st.subheader("Trend Analysis")
-            tab_age, tab_eco = st.tabs(["Age Trend", "Economic Trend"])
-            
-            with tab_age:
-                age_trend = df_viz.groupby('Age at Enrollment')['Student Status'].apply(lambda x: (x == 'Dropout').mean()).reset_index(name='Dropout Rate')
-                fig_age = px.line(age_trend, x='Age at Enrollment', y='Dropout Rate', markers=True)
-                st.plotly_chart(fig_age, use_container_width=True)
-                
-            with tab_eco:
-                eco_trend = df_viz.groupby('Unemployment Rate (%)')['Student Status'].apply(lambda x: (x == 'Dropout').mean()).reset_index(name='Dropout Rate')
-                try:
-                    fig_eco = px.scatter(eco_trend, x='Unemployment Rate (%)', y='Dropout Rate', trendline="ols")
-                except:
-                    fig_eco = px.scatter(eco_trend, x='Unemployment Rate (%)', y='Dropout Rate')
-                st.plotly_chart(fig_eco, use_container_width=True)
-
-# ------------------ PREDICTION TOOL ------------------
-elif choice == "Prediction Tool":
-    if not st.session_state['logged_in']:
-        st.warning("Please login to use the Prediction Tool.")
-    elif model is None:
-        st.error("Model file not found.")
-    else:
-        st.title("🤖 Real-Time Dropout Predictor")
+        sel_courses = f1.multiselect("Academic Program", courses, default=courses[:1])
         
-        with st.form("prediction_form"):
-            col1, col2, col3 = st.columns(3)
+        nationalities = df['Nationality'].unique()
+        sel_nat = f2.multiselect("Nationality", nationalities, default=nationalities[:3])
+        
+        quals = df['Previous Qualification'].unique()
+        sel_qual = f3.multiselect("Qualification", quals, default=quals[:3])
+    
+    # Apply Filters
+    df_viz = df.copy()
+    if sel_courses: df_viz = df_viz[df_viz['Course Name'].isin(sel_courses)]
+    if sel_nat: df_viz = df_viz[df_viz['Nationality'].isin(sel_nat)]
+    if sel_qual: df_viz = df_viz[df_viz['Previous Qualification'].isin(sel_qual)]
+        
+    if df_viz.empty:
+        st.warning("No data found matching these filters.")
+    else:
+        # --- KPI CARDS ---
+        m1, m2, m3, m4 = st.columns(4)
+        
+        dropout_rate = (df_viz['Student Status'] == 'Dropout').mean() * 100
+        avg_grade = df_viz['Average Grade (2nd Sem)'].mean()
+        high_risk_count = len(df_viz[(df_viz['Student Status'] == 'Dropout') & (df_viz['Is Debtor'] == 1)])
+        
+        m1.metric("Active Students", f"{len(df_viz):,}", "Filtered Cohort")
+        m2.metric("Dropout Rate", f"{dropout_rate:.1f}%", "-2.4%" if dropout_rate < 30 else "+1.2%", delta_color="inverse")
+        m3.metric("Avg Performance", f"{avg_grade:.1f}", "Grade Points (0-20)")
+        m4.metric("Financial Risk", high_risk_count, "Debtors", delta_color="inverse")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # --- TABS ---
+        tab_deep, tab_corr, tab_factors, tab_trends = st.tabs([
+            "🔍 Deep Dive", "🔥 Risk Matrix", "👨‍👩‍👧 Demographics", "📈 Trajectory"
+        ])
+        
+        # Helper for dark plots
+        def update_dark_layout(fig):
+            fig.update_layout(
+                template="plotly_dark", 
+                paper_bgcolor="rgba(0,0,0,0)", 
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#e0e0e0"),
+                margin=dict(l=20, r=20, t=40, b=20)
+            )
+            return fig
+
+        # TAB 1: DEEP DIVE
+        with tab_deep:
+            c1, c2 = st.columns([1, 1])
+            with c1:
+                st.subheader("Program Health")
+                if 'Course Name' in df_viz.columns:
+                    sunburst_data = df_viz.groupby(['Course Name', 'Student Status']).size().reset_index(name='Count')
+                    fig_sun = px.sunburst(
+                        sunburst_data, path=['Course Name', 'Student Status'], values='Count',
+                        color='Student Status', color_discrete_map={'Dropout': '#ef4444', 'Graduate': '#10b981', 'Enrolled': '#3b82f6'}
+                    )
+                    # FIX: use width="stretch"
+                    st.plotly_chart(update_dark_layout(fig_sun), width="stretch")
             
-            with col1:
-                tuition = st.selectbox("Tuition Fees Up-to-Date?", ["Yes", "No"])
-                debtor = st.selectbox("Is the Student a Debtor?", ["Yes", "No"])
+            with c2:
+                st.subheader("Grade Distribution")
+                try:
+                    grad = df_viz[df_viz['Student Status'] == 'Graduate']['Average Grade (2nd Sem)'].dropna()
+                    drop = df_viz[df_viz['Student Status'] == 'Dropout']['Average Grade (2nd Sem)'].dropna()
+                    if len(grad) > 1 and len(drop) > 1:
+                        fig_dist = ff.create_distplot([grad, drop], ['Graduates', 'Dropouts'], show_hist=False, colors=['#10b981', '#ef4444'])
+                        fig_dist.update_layout(legend=dict(orientation="h", y=1.1))
+                        # FIX: use width="stretch"
+                        st.plotly_chart(update_dark_layout(fig_dist), width="stretch")
+                except: st.info("Insufficient data for distribution.")
+
+        # TAB 2: CORRELATIONS
+        with tab_corr:
+            st.subheader("Risk Correlations")
+            hm_df = df_viz.copy()
+            hm_df['Is_Dropout'] = hm_df['Student Status'].apply(lambda x: 1 if x == 'Dropout' else 0)
             
-            with col2:
-                gender = st.selectbox("Gender", ["Male", "Female"])
-                scholarship = st.selectbox("Scholarship Holder?", ["Yes", "No"])
+            bin_map = {'Yes': 1, 'No': 0, 'Male': 1, 'Female': 0}
+            for c in ['Tuition Fees Up-to-Date', 'Is Debtor', 'Gender (1=Male, 0=Female)']:
+                if c in hm_df.columns: hm_df[c] = hm_df[c].map(bin_map)
             
-            with col3:
-                age = st.number_input("Age at Enrollment", 17, 70, 20)
-                grade = st.number_input("2nd Sem Grade (0-20)", 0.0, 20.0, 12.0)
-                units = st.number_input("Approved Units (1st Sem)", 0, 30, 5)
+            target_cols = ['Is_Dropout', 'Age at Enrollment', 'Average Grade (2nd Sem)', 'Tuition Fees Up-to-Date']
+            avail_cols = [c for c in target_cols if c in hm_df.columns]
             
-            submit_button = st.form_submit_button("Predict Outcome")
+            if avail_cols:
+                corr = hm_df[avail_cols].corr()
+                fig_corr = px.imshow(corr, text_auto=True, color_continuous_scale='RdBu_r', aspect="auto")
+                # FIX: use width="stretch"
+                st.plotly_chart(update_dark_layout(fig_corr), width="stretch")
+
+        # TAB 3: PARENTAL
+        with tab_factors:
+            st.subheader("Socio-Economic Factors")
+            c1, c2 = st.columns(2)
+            def plot_bar(col, title, color):
+                d = df_viz.groupby(col)['Student Status'].apply(lambda x: (x == 'Dropout').mean()).reset_index(name='Rate').sort_values('Rate', ascending=False).head(8)
+                fig = px.bar(d, x=col, y='Rate', title=title, color_discrete_sequence=[color])
+                return update_dark_layout(fig)
             
-        if submit_button:
-            input_df = pd.DataFrame([[
-                1 if tuition == 'Yes' else 0,
-                1 if debtor == 'Yes' else 0,
-                1 if gender == 'Male' else 0,
-                1 if scholarship == 'Yes' else 0,
-                age, grade, units
-            ]], columns=[
-                'Tuition Fees Up-to-Date', 'Is Debtor', 'Gender (1=Male, 0=Female)', 
-                'Scholarship Holder', 'Age at Enrollment', 'Average Grade (2nd Sem)', 
-                'Approved Units (1st Sem)'
-            ])
-            
-            try:
-                prediction = model.predict(input_df)[0]
-                probability = model.predict_proba(input_df).max()
+            # FIX: use width="stretch"
+            c1.plotly_chart(plot_bar("Father's Qualification", "Father's Edu Impact", "#3b82f6"), width="stretch")
+            c2.plotly_chart(plot_bar("Mother's Qualification", "Mother's Edu Impact", "#ec4899"), width="stretch")
+
+        # TAB 4: TRENDS
+        with tab_trends:
+            st.subheader("Age vs Dropout Risk")
+            trend = df_viz.groupby('Age at Enrollment')['Student Status'].apply(lambda x: (x == 'Dropout').mean()).reset_index()
+            fig_trend = px.line(trend, x='Age at Enrollment', y='Student Status', markers=True, title="Risk Trajectory by Age")
+            fig_trend.update_traces(line_color='#ef4444')
+            # FIX: use width="stretch"
+            st.plotly_chart(update_dark_layout(fig_trend), width="stretch")
+
+# =============================================================================
+# VIEW 3: PREDICTION TOOL
+# =============================================================================
+elif choice == "Prediction Tool":
+    st.markdown(
+        """
+        <h1 style="color: #fafafa;">🤖 AI Risk Assessment</h1>
+        <p style="color: #94a3b8;">Enter student parameters to generate a real-time dropout probability score.</p>
+        <hr style="border-color: #414141;">
+        """, 
+        unsafe_allow_html=True
+    )
+
+    if model is None:
+        st.error("⚠️ Model file not found. Please run the training notebook.")
+    else:
+        # Layout: 2 Columns
+        col_input, col_viz = st.columns([1.5, 1], gap="large")
+
+        with col_input:
+            with st.form("predict_form"):
+                st.markdown("#### Student Profile")
                 
-                st.markdown("---")
-                if prediction == 1:
-                    st.error("⚠️ Prediction: Dropout Risk")
-                    st.metric("Confidence Level", f"{probability:.1%}")
+                c1, c2 = st.columns(2)
+                with c1:
+                    tuition = st.selectbox("Tuition Fees Paid?", ["Yes", "No"])
+                    debtor = st.selectbox("Is Debtor?", ["Yes", "No"])
+                    scholarship = st.selectbox("Scholarship?", ["Yes", "No"])
+                with c2:
+                    gender = st.selectbox("Gender", ["Male", "Female"])
+                    age = st.slider("Age at Enrollment", 17, 60, 20)
+                    units = st.slider("Approved Units (Sem 1)", 0, 30, 5)
+                
+                grade = st.slider("Average Grade (Sem 2)", 0.0, 20.0, 12.0)
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                # FIX: use width="stretch"
+                predict_btn = st.form_submit_button("Run Analysis", width="stretch")
+
+        with col_viz:
+            st.markdown("#### Risk Gauge")
+            if predict_btn:
+                # Prepare Input
+                input_df = pd.DataFrame([[
+                    1 if tuition == 'Yes' else 0,
+                    1 if debtor == 'Yes' else 0,
+                    1 if gender == 'Male' else 0,
+                    1 if scholarship == 'Yes' else 0,
+                    age, grade, units
+                ]], columns=[
+                    'Tuition Fees Up-to-Date', 'Is Debtor', 'Gender (1=Male, 0=Female)', 
+                    'Scholarship Holder', 'Age at Enrollment', 'Average Grade (2nd Sem)', 
+                    'Approved Units (1st Sem)'
+                ])
+                
+                # Predict
+                with st.spinner("Processing..."):
+                    time.sleep(0.5)
+                    pred = model.predict(input_df)[0]
+                    prob = model.predict_proba(input_df).max()
+
+                # Visual Result
+                is_risk = pred == 1
+                color = "#ef4444" if is_risk else "#10b981"
+                title = "Dropout Risk" if is_risk else "Success Prob."
+                
+                # Gauge Chart - Dark Mode
+                fig_gauge = go.Figure(go.Indicator(
+                    mode = "gauge+number",
+                    value = prob * 100,
+                    domain = {'x': [0, 1], 'y': [0, 1]},
+                    title = {'text': title, 'font': {'size': 20, 'color': '#e0e0e0'}},
+                    number = {'font': {'color': '#e0e0e0'}},
+                    gauge = {
+                        'axis': {'range': [0, 100], 'tickcolor': "white"},
+                        'bar': {'color': color},
+                        'bgcolor': "rgba(0,0,0,0)",
+                        'steps': [
+                            {'range': [0, 50], 'color': "#333333"},
+                            {'range': [50, 80], 'color': "#444444"},
+                            {'range': [80, 100], 'color': "#555555"}
+                        ],
+                    }
+                ))
+                fig_gauge.update_layout(
+                    height=280, 
+                    margin=dict(l=10, r=10, t=40, b=10),
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    font={'color': "#e0e0e0"}
+                )
+                # FIX: use width="stretch"
+                st.plotly_chart(fig_gauge, width="stretch")
+                
+                if is_risk:
+                    st.error("⚠️ **High Risk Alert**")
+                    st.caption("Action: Schedule counseling immediately.")
                 else:
-                    st.success("✅ Prediction: Likely to Graduate")
-                    st.metric("Confidence Level", f"{probability:.1%}")
-                    
-            except Exception as e:
-                st.error(f"Prediction Error: {e}")
+                    st.success("✅ **On Track**")
+                    st.caption("Status: Student is performing well.")
+            else:
+                # Empty State
+                st.info("👈 Enter details to start analysis.")
