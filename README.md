@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎓 Student Dropout Predictor
+# 🎓 Student Dropout Predictor — v2.0 Pro
 
 ### Next-Gen Machine Learning Dashboard for Student Retention Analytics
 
@@ -49,6 +49,49 @@
 | 🤖 **AI Prediction Tool** | Real-time dropout probability gauge using trained ML model |
 | 🌙 **Dark Mode UI** | Full glassmorphism dark theme with smooth hover animations |
 | 🔽 **Dynamic Filters** | Filter by Academic Program, Nationality, and Prior Qualification |
+
+---
+
+## 📸 Screenshots
+
+### 🖥️ Executive Dashboard — Deep Dive Tab
+> Real-time KPI cards, program health sunburst chart, and grade distribution overlay.
+
+![Executive Overview](screenshots/dashboard_overview.png)
+
+---
+
+### 🔥 Risk Matrix — Correlation Heatmap
+> Shows how dropout correlates with age, grades, and tuition payment status.
+
+| Correlation | Variable | Insight |
+|---|---|---|
+| **+0.22** | Age at Enrollment | Older students = higher risk |
+| **-0.22** | Average Grade (2nd Sem) | Better grades = lower dropout |
+| **-0.30** | Tuition Fees Up-to-Date | Unpaid fees = strong dropout signal |
+
+![Risk Matrix](screenshots/risk_matrix.png)
+
+---
+
+### 👨‍👩‍👧 Demographics — Socio-Economic Factors
+> Parental education level vs dropout rate — students from less-educated family backgrounds face the highest risk.
+
+![Demographics](screenshots/demographics.png)
+
+---
+
+### 📈 Trajectory — Age vs Dropout Risk
+> Dropout risk rises sharply for older enrollees (standardised age scale).
+
+![Trajectory](screenshots/trajectory.png)
+
+---
+
+### 🤖 AI Prediction Tool — Real-Time Risk Gauge
+> Enter student parameters → Instant dropout probability score with color-coded alert.
+
+![Prediction Tool](screenshots/prediction_tool.png)
 
 ---
 
@@ -212,17 +255,47 @@ Input a student profile and get a live dropout probability score:
 
 ---
 
-## 🤖 ML Model
-
-The pre-trained model (`student_dropout_model.pkl`) is a **Scikit-learn classifier** that:
-
-- Takes **7 key features** as input (financial, academic, demographic)
-- Outputs a **binary prediction** (Dropout = 1, Not Dropout = 0)
-- Provides **probability scores** via `predict_proba()`
-
-> The model was trained on the `processed_student_data.csv` dataset with engineered features like `Approval_Rate`, `Grade_Improvement`, and `Total_Approved_Units`.
-
 ---
+
+## 🤖 ML Model & Pipeline
+
+### Data Preprocessing
+- **Missing values** — Median imputation for numerical columns, mode imputation for categorical
+- **Outlier treatment** — IQR capping method (clips at Q1 - 1.5×IQR and Q3 + 1.5×IQR) — preserves data without dropping rows
+- **Filtering** — "Currently Enrolled" students excluded from training (incomplete outcomes add noise)
+
+### Feature Engineering (New Columns Created)
+| Feature | Formula | Purpose |
+|---|---|---|
+| `Grade_Improvement` | Grade Sem2 − Grade Sem1 | Captures academic trajectory |
+| `Total_Approved_Units` | Approved Sem1 + Approved Sem2 | Overall academic throughput |
+| `Approval_Rate_1st_Sem` | Approved / Enrolled | Efficiency in Sem 1 |
+| `Approval_Rate_2nd_Sem` | Approved / Enrolled | Efficiency in Sem 2 |
+
+### Model: Random Forest Classifier
+- **Algorithm:** `RandomForestClassifier` (Scikit-learn)
+- **Tuning:** `GridSearchCV` with params — `n_estimators: [50, 100]`, `max_depth: [10, 20, None]`
+- **Train/Test Split:** 80% / 20% with `random_state=42`
+- **Target:** Binary — `Dropout = 1`, `Graduate = 0`
+- **Serialization:** Saved as `student_dropout_model.pkl` via Pickle
+
+### Top 7 Predictive Features
+```
+1. Tuition Fees Up-to-Date    (financial)
+2. Average Grade (2nd Sem)    (academic)
+3. Approved Units (1st Sem)   (academic)
+4. Is Debtor                  (financial)
+5. Scholarship Holder         (financial)
+6. Age at Enrollment          (demographic)
+7. Gender                     (demographic)
+```
+
+### Key Findings from EDA
+- Students with **unpaid tuition fees** show ~-0.30 correlation with dropout (strongest financial signal)
+- **Older students** (higher age at enrollment) carry significantly higher risk
+- **Parental education** is a major socio-economic predictor — students with parents who didn't finish secondary school face the highest dropout rates
+
+
 
 ## 🎨 UI Design
 
